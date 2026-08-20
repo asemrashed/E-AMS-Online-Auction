@@ -1,0 +1,146 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #fcf9f8;
+  --on-background: #1c1b1b;
+  --surface: #fcf9f8;
+  --surface-container-lowest: #ffffff;
+  --surface-container-low: #f6f3f2;
+  --surface-container: #f0edec;
+  --surface-container-high: #ebe7e7;
+  --surface-container-highest: #e5e2e1;
+  --on-surface: #1c1b1b;
+  --on-surface-variant: #424655;
+  --outline: #727787;
+  --outline-variant: #c2c6d8;
+  --border-muted: #e5e5e5;
+  --surface-gray: #f8f8f8;
+
+  --primary: #0051c6;
+  --on-primary: #ffffff;
+  --primary-container: #0968f6;
+  --on-primary-container: #f7f6ff;
+
+  --secondary: #006780;
+  --on-secondary: #ffffff;
+  --secondary-container: #6cd9ff;
+  --on-secondary-container: #005e75;
+
+  --tertiary: #745400;
+  --on-tertiary: #ffffff;
+  --tertiary-container: #fdbb11;
+  --on-tertiary-container: #261900;
+
+  --urgent-red: #f02d2d;
+  --success-green: #92c821;
+
+  --hero-grid-line: rgba(9, 104, 246, 0.08);
+}
+
+.dark {
+  --background: #121212;
+  --on-background: #f3f0ef;
+  --surface: #121212;
+  --surface-container-lowest: #1a1a1c;
+  --surface-container-low: #1e1f22;
+  --surface-container: #232428;
+  --surface-container-high: #2a2b30;
+  --surface-container-highest: #313338;
+  --on-surface: #f3f0ef;
+  --on-surface-variant: #b7bccb;
+  --outline: #8d92a3;
+  --outline-variant: #3a3d47;
+  --border-muted: #2c2d33;
+  --surface-gray: #1a1a1c;
+
+  --primary: #7fa8ff;
+  --on-primary: #001847;
+  --primary-container: #2f6df6;
+  --on-primary-container: #f7f6ff;
+
+  --secondary: #66d4f9;
+  --on-secondary: #001f28;
+  --secondary-container: #004d61;
+  --on-secondary-container: #b8eaff;
+
+  --tertiary: #fdbb11;
+  --on-tertiary: #261900;
+  --tertiary-container: #5d4200;
+  --on-tertiary-container: #ffdea4;
+
+  --urgent-red: #ff5c5c;
+  --success-green: #a8de3c;
+
+  --hero-grid-line: rgba(127, 168, 255, 0.08);
+}
+
+@layer base {
+  * {
+    @apply border-border-muted;
+  }
+  body {
+    @apply bg-background text-on-surface font-body transition-colors duration-200;
+  }
+  h1, h2, h3, h4 {
+    @apply font-headline;
+  }
+}
+
+@layer components {
+  .btn-primary {
+    @apply bg-primary text-on-primary rounded px-5 py-3 font-medium text-body-sm hover:opacity-90 transition-opacity inline-flex items-center justify-center gap-2;
+  }
+  .btn-secondary {
+    @apply bg-transparent border border-border-muted text-on-surface rounded px-5 py-3 font-medium text-body-sm hover:bg-surface-container transition-colors inline-flex items-center justify-center gap-2;
+  }
+  .btn-ghost {
+    @apply bg-transparent text-on-surface-variant hover:text-on-surface rounded px-3 py-2 text-body-sm transition-colors;
+  }
+  .card {
+    @apply bg-surface-container-lowest border border-border-muted rounded-md shadow-level2;
+  }
+  .input-field {
+    @apply w-full bg-surface-container-low border border-border-muted rounded px-3 py-2.5 text-on-surface placeholder:text-outline focus:outline-none focus:ring-2 focus:ring-primary transition-colors;
+  }
+  .badge-live {
+    @apply inline-flex items-center gap-1.5 text-success-green text-label-caps rounded-full px-3 py-1;
+    background-color: color-mix(in srgb, var(--success-green) 15%, transparent);
+  }
+  .badge-urgent {
+    @apply text-urgent-red font-mono text-label-numeric rounded px-2 py-1;
+    background-color: color-mix(in srgb, var(--urgent-red) 10%, transparent);
+  }
+  .eyebrow {
+    @apply text-label-caps text-primary tracking-widest;
+  }
+  .section-pad {
+    @apply px-margin-mobile md:px-margin-desktop py-16 md:py-24;
+  }
+}
+
+/* Signature element: live market ticker */
+@keyframes ticker-scroll {
+  from { transform: translateX(0); }
+  to { transform: translateX(-50%); }
+}
+.ticker-track {
+  animation: ticker-scroll 40s linear infinite;
+  display: inline-flex;
+  width: max-content;
+}
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ticker-track { animation: none; }
+}
+
+/* Hero background grid, subtle, on-brand for a "precision" institutional product */
+.hero-grid {
+  background-image:
+    linear-gradient(var(--hero-grid-line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--hero-grid-line) 1px, transparent 1px);
+  background-size: 48px 48px;
+}
