@@ -1,5 +1,9 @@
 'use strict';
 
+if (process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL.trim().replace(/^["']|["']$/g, '');
+}
+
 const prismaClient = require('@prisma/client');
 const { PrismaClient } = prismaClient;
 

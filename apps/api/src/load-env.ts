@@ -11,3 +11,7 @@ const candidates = [
 for (const file of candidates) {
   dotenv.config({ path: file, override: false });
 }
+
+if (process.env.DATABASE_URL) {
+  process.env.DATABASE_URL = process.env.DATABASE_URL.trim().replace(/^["']|["']$/g, '');
+}
