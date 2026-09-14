@@ -1,4 +1,4 @@
-import './load-env';
+import { describeDatabaseUrl } from './load-env';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -51,13 +51,20 @@ app.use('/api/reviews', reviewRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/super-admin', superAdminRoutes);
 
-app.get('/health', (_req, res) => res.json({ status: 'ok' }));
+app.get('/health', (_req, res) => res.json({ status: 'ok', db: describeDatabaseUrl() }));
 
 app.use(notFound);
 app.use(errorHandler);
 
 initSocket(httpServer);
-startAuctionCloser();
+
+const db = describeDatabaseUrl();
+console.log('[db] DATABASE_URL', db);
+if (db.ok) {
+  startAuctionCloser();
+} else {
+  console.error('[db] DATABASE_URL must be postgresql://... Fix it on Render. Current protocol:', db.protocol);
+}
 
 const PORT = process.env.PORT || process.env.API_PORT || 4000;
 httpServer.listen(PORT, () => {
