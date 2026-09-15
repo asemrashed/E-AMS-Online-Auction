@@ -97,9 +97,9 @@ export function ImageUploader({
       {urls.length > 0 && (
         <div className="flex flex-wrap gap-2 mt-3">
           {urls.map((u) => (
-            <button key={u} type="button" className="relative w-20 h-20 rounded overflow-hidden border border-border-muted" onClick={() => onChange(urls.filter((x) => x !== u))}>
+            <button key={u} type="button" className="relative w-20 h-24 rounded overflow-hidden border border-border-muted bg-surface-container-high flex items-center justify-center" onClick={() => onChange(urls.filter((x) => x !== u))}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={u} alt="" className="w-full h-full object-cover" />
+              <img src={u} alt="" className="max-w-full max-h-full object-contain" />
             </button>
           ))}
         </div>

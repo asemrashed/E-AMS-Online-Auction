@@ -9,10 +9,10 @@ export function AuctionCard({ auction }: { auction: Auction }) {
   return (
     <article className="card overflow-hidden hover:shadow-level3 transition-shadow">
       <Link href={`/auctions/${auction.slug}`} className="block">
-        <div className="aspect-video bg-surface-container-high flex items-center justify-center text-outline text-body-sm">
+        <div className="aspect-[4/3] bg-surface-container-high flex items-center justify-center text-outline text-body-sm">
           {auction.images?.[0] ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img src={auction.images[0]} alt={auction.title} className="w-full h-full object-cover" />
+            <img src={auction.images[0]} alt={auction.title} className="max-w-full max-h-full w-full h-full object-contain" />
           ) : (
             'No image'
           )}

@@ -145,26 +145,68 @@ router.patch('/:id', requireAuth, requireRole('SELLER'), async (req: AuthedReque
   try {
     const existing = await prisma.auction.findUnique({
       where: { id: req.params.id },
-      include: { _count: { select: { bids: true } } },
+      include: { _count: { select: { bids: true } }, order: { select: { id: true } } },
     });
     if (!existing) throw new ApiError(404, 'Auction not found');
     if (existing.sellerId !== req.user!.userId) throw new ApiError(403, 'Not your listing');
-    const now = new Date();
-    const biddingStarted = existing.status === 'LIVE' && existing.startsAt <= now;
-    if (existing.status !== 'DRAFT' && !(existing.status === 'LIVE' && existing.startsAt > now && existing._count.bids === 0)) {
-      throw new ApiError(409, biddingStarted ? 'Live auctions cannot be edited' : 'This listing can no longer be edited');
+    if (existing.status === 'ENDED' || existing.status === 'CANCELLED') {
+      throw new ApiError(409, 'This listing can no longer be edited');
     }
+    if (existing.order) throw new ApiError(409, 'Sold listings cannot be edited');
 
     const data = createAuctionSchema.partial().parse(req.body);
+    const bidCount = existing._count.bids;
+    const now = new Date();
+    const biddingStarted = existing.status === 'LIVE' && existing.startsAt <= now;
+
+    if (data.startsAt && biddingStarted) {
+      throw new ApiError(409, 'Start time cannot be changed after bidding has begun');
+    }
+    if (bidCount > 0 && data.startingBid !== undefined && Number(data.startingBid) !== Number(existing.startingBid)) {
+      throw new ApiError(409, 'Starting bid cannot be changed after bids have been placed');
+    }
+
+    const nextStarts = data.startsAt ? new Date(data.startsAt) : existing.startsAt;
+    const nextEnds = data.endsAt ? new Date(data.endsAt) : existing.endsAt;
+    if (nextEnds <= nextStarts) throw new ApiError(400, 'End time must be after the start time');
+    if (data.endsAt && nextEnds <= now) throw new ApiError(400, 'End time must be in the future');
+
+    if (data.buyNowPrice !== undefined && data.buyNowPrice <= Number(existing.currentBid)) {
+      throw new ApiError(400, 'Buy Now price must be higher than the current bid');
+    }
+
     const auction = await prisma.auction.update({
       where: { id: req.params.id },
       data: {
         ...data,
-        startsAt: data.startsAt ? new Date(data.startsAt) : undefined,
-        endsAt: data.endsAt ? new Date(data.endsAt) : undefined,
+        startsAt: data.startsAt ? nextStarts : undefined,
+        endsAt: data.endsAt ? nextEnds : undefined,
+        currentBid: bidCount === 0 && data.startingBid !== undefined ? data.startingBid : undefined,
       },
     });
     res.json(auction);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.delete('/:id', requireAuth, requireRole('SELLER'), async (req: AuthedRequest, res, next) => {
+  try {
+    const existing = await prisma.auction.findUnique({
+      where: { id: req.params.id },
+      include: { _count: { select: { bids: true } }, order: { select: { id: true } } },
+    });
+    if (!existing) throw new ApiError(404, 'Auction not found');
+    if (existing.sellerId !== req.user!.userId) throw new ApiError(403, 'Not your listing');
+    if (existing.order) throw new ApiError(409, 'Sold listings cannot be deleted');
+    if (existing.status === 'ENDED') throw new ApiError(409, 'Ended auctions cannot be deleted');
+    if (existing._count.bids > 0) {
+      throw new ApiError(409, 'Listings with bids cannot be deleted. Close the auction instead.');
+    }
+
+    await prisma.cartItem.deleteMany({ where: { auctionId: existing.id } });
+    await prisma.auction.delete({ where: { id: existing.id } });
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   Gavel, LayoutDashboard, List, Landmark, Wallet, ShoppingCart,
   Heart, Package, Shield, Users, BadgeDollarSign, UserCog, PieChart,
-  FileCheck, Settings,
+  FileCheck, Settings, LogOut,
 } from 'lucide-react';
 import clsx from 'clsx';
 import { ThemeToggle } from './ThemeToggle';
@@ -48,7 +48,7 @@ const SUPER = [
 ];
 
 export function RoleShell({ children, variant }: { children: React.ReactNode; variant: 'dashboard' | 'admin' }) {
-  const { user } = useAuthStore();
+  const { user, logout } = useAuthStore();
   const pathname = usePathname();
   const links =
     variant === 'admin'
@@ -79,6 +79,16 @@ export function RoleShell({ children, variant }: { children: React.ReactNode; va
             );
           })}
         </nav>
+        <div className="p-3 border-t border-border-muted">
+          <button
+            type="button"
+            onClick={() => logout()}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded text-body-sm text-on-surface-variant hover:text-on-surface hover:bg-surface-container"
+          >
+            <LogOut className="w-4 h-4" />
+            Logout
+          </button>
+        </div>
       </aside>
       <div className="flex-1 min-w-0">
         <header className="h-14 border-b border-border-muted bg-surface-container-lowest flex items-center justify-between px-4 md:px-6">

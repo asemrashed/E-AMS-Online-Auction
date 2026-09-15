@@ -1,4 +1,5 @@
 import { describeDatabaseUrl } from './load-env';
+import dns from 'node:dns';
 import express from 'express';
 import cors from 'cors';
 import rateLimit from 'express-rate-limit';
@@ -6,6 +7,7 @@ import { createServer } from 'http';
 import { initSocket } from './sockets/auction.socket';
 import { errorHandler, notFound } from './middleware/errorHandler';
 import { startAuctionCloser } from './services/auction-closer';
+import { describeSmtp } from './services/email.service';
 
 import authRoutes from './routes/auth.routes';
 import userRoutes from './routes/user.routes';
@@ -24,8 +26,17 @@ import uploadRoutes from './routes/upload.routes';
 import contactRoutes from './routes/contact.routes';
 import reviewRoutes from './routes/review.routes';
 
+try {
+  dns.setDefaultResultOrder('ipv4first');
+} catch {
+  /* Node < 17 */
+}
+
 const app = express();
 const httpServer = createServer(app);
+
+// Render (and most hosts) terminate TLS and set X-Forwarded-For.
+app.set('trust proxy', 1);
 
 app.use(cors({ origin: process.env.WEB_URL || 'http://localhost:3000', credentials: true }));
 
@@ -60,6 +71,7 @@ initSocket(httpServer);
 
 const db = describeDatabaseUrl();
 console.log('[db] DATABASE_URL', db);
+console.log('[smtp]', describeSmtp());
 if (db.ok) {
   startAuctionCloser();
 } else {

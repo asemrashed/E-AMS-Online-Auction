@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer';
+import type SMTPTransport from 'nodemailer/lib/smtp-transport';
 import { createHash, randomInt } from 'crypto';
 import { prisma } from '@e-ams/db';
 import type { EmailOtpPurpose } from '@e-ams/db';
@@ -13,16 +14,65 @@ function smtpPass() {
   return (process.env.SMTP_PASS || '').replace(/\s+/g, '');
 }
 
-function transporter() {
+function smtpPorts(): number[] {
+  const configured = Number(process.env.SMTP_PORT || (process.env.RENDER ? 465 : 587));
+  const other = configured === 465 ? 587 : 465;
+  // Render often cannot complete STARTTLS on 587; prefer 465 first when hosted there.
+  if (process.env.RENDER && configured === 587) return [465, 587];
+  return process.env.SMTP_NO_FALLBACK === 'true' ? [configured] : [configured, other];
+}
+
+export function describeSmtp() {
+  const user = process.env.SMTP_USER || '';
+  const ports = smtpPorts();
+  return {
+    host: process.env.SMTP_HOST || 'smtp.gmail.com',
+    port: ports[0],
+    fallbackPort: ports[1] ?? null,
+    userSet: Boolean(user),
+    passSet: Boolean(smtpPass()),
+    from: process.env.SMTP_FROM || (user ? `${BRAND} <${user}>` : null),
+  };
+}
+
+function smtpOptions(port: number): SMTPTransport.Options {
   const user = process.env.SMTP_USER;
   const pass = smtpPass();
   if (!user || !pass) throw new ApiError(500, 'Email is not configured');
-  return nodemailer.createTransport({
+  const secure = port === 465;
+  return {
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
-    port: Number(process.env.SMTP_PORT || 587),
-    secure: Number(process.env.SMTP_PORT || 587) === 465,
+    port,
+    secure,
     auth: { user, pass },
-  });
+    requireTLS: !secure,
+    family: 4,
+    connectionTimeout: 12_000,
+    greetingTimeout: 12_000,
+    socketTimeout: 20_000,
+    tls: { minVersion: 'TLSv1.2' },
+  } as SMTPTransport.Options;
+}
+
+function isConnFailure(err: unknown) {
+  const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
+  return ['ETIMEDOUT', 'ESOCKET', 'ECONNECTION', 'ECONNRESET', 'ENOTFOUND', 'EAI_AGAIN', 'ECONNREFUSED'].includes(code);
+}
+
+function smtpError(err: unknown) {
+  const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
+  console.error('[smtp] send failed', { code, message: err instanceof Error ? err.message : err });
+  if (isConnFailure(err)) {
+    return new ApiError(
+      503,
+      'Could not reach the mail server. If this is hosted on Render, set SMTP_PORT=465 (SSL). Gmail also requires an App Password.',
+    );
+  }
+  return new ApiError(503, 'Could not send email right now. Please try again shortly.');
+}
+
+function transporter(port = smtpPorts()[0]) {
+  return nodemailer.createTransport(smtpOptions(port));
 }
 
 function hashOtp(email: string, purpose: EmailOtpPurpose, code: string) {
@@ -48,7 +98,23 @@ function brandedHtml(title: string, intro: string, code: string) {
 
 export async function sendMail(to: string, subject: string, html: string) {
   const from = process.env.SMTP_FROM || `${BRAND} <${process.env.SMTP_USER}>`;
-  await transporter().sendMail({ from, to, subject, html });
+  const ports = smtpPorts();
+  const payload = { from, to, subject, html };
+  let lastErr: unknown;
+
+  for (let i = 0; i < ports.length; i++) {
+    try {
+      await transporter(ports[i]).sendMail(payload);
+      if (i > 0) console.warn(`[smtp] sent via fallback port ${ports[i]}`);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isConnFailure(err) || i === ports.length - 1) throw smtpError(err);
+      console.warn(`[smtp] port ${ports[i]} failed (${(err as { code?: string }).code}); retrying ${ports[i + 1]}`);
+    }
+  }
+
+  throw smtpError(lastErr);
 }
 
 export async function issueEmailOtp(email: string, purpose: EmailOtpPurpose) {
@@ -67,7 +133,7 @@ export async function issueEmailOtp(email: string, purpose: EmailOtpPurpose) {
     where: { email: normalized, purpose, consumedAt: null },
     data: { consumedAt: new Date() },
   });
-  await prisma.emailOtp.create({
+  const record = await prisma.emailOtp.create({
     data: {
       email: normalized,
       purpose,
@@ -81,7 +147,12 @@ export async function issueEmailOtp(email: string, purpose: EmailOtpPurpose) {
   const intro = isVerify
     ? `Use this 5-character code to verify your ${BRAND} email address.`
     : `Use this 5-character code to reset your ${BRAND} password.`;
-  await sendMail(normalized, subject, brandedHtml(isVerify ? 'Verify your email' : 'Reset your password', intro, code));
+  try {
+    await sendMail(normalized, subject, brandedHtml(isVerify ? 'Verify your email' : 'Reset your password', intro, code));
+  } catch (err) {
+    await prisma.emailOtp.delete({ where: { id: record.id } }).catch(() => undefined);
+    throw err;
+  }
 }
 
 export async function consumeEmailOtp(email: string, purpose: EmailOtpPurpose, code: string) {

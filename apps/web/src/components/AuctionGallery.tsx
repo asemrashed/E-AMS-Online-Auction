@@ -8,7 +8,7 @@ export function AuctionGallery({ images, title }: { images: string[]; title: str
   const photos = images.slice(0, 4);
   if (photos.length === 0) {
     return (
-      <div className="aspect-video bg-surface-container-high rounded-md mb-6 flex items-center justify-center text-outline">
+      <div className="min-h-[280px] bg-surface-container-high rounded-md mb-6 flex items-center justify-center text-outline">
         No image available
       </div>
     );
@@ -19,9 +19,9 @@ export function AuctionGallery({ images, title }: { images: string[]; title: str
 
   return (
     <div className="mb-6">
-      <div className="relative aspect-video bg-surface-container-high rounded-md overflow-hidden">
+      <div className="relative bg-surface-container-high rounded-md overflow-hidden flex items-center justify-center min-h-[320px] md:min-h-[480px]">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={current} alt={title} className="w-full h-full object-cover" />
+        <img src={current} alt={title} className="max-h-[70vh] max-w-full w-auto h-auto object-contain" />
         {photos.length > 1 && (
           <>
             <button
@@ -50,10 +50,10 @@ export function AuctionGallery({ images, title }: { images: string[]; title: str
               key={src}
               type="button"
               onClick={() => setIndex(i)}
-              className={`aspect-video rounded-md overflow-hidden border-2 ${i === index ? 'border-primary' : 'border-transparent'}`}
+              className={`h-20 rounded-md overflow-hidden border-2 bg-surface-container-high flex items-center justify-center ${i === index ? 'border-primary' : 'border-transparent'}`}
             >
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={src} alt={`${title} ${i + 1}`} className="w-full h-full object-cover" />
+              <img src={src} alt={`${title} ${i + 1}`} className="max-w-full max-h-full object-contain" />
             </button>
           ))}
         </div>
