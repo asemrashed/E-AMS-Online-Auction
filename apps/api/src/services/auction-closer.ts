@@ -84,7 +84,14 @@ export async function closeExpiredAuctions() {
 
 export function startAuctionCloser() {
   const tick = () => {
-    closeExpiredAuctions().catch((err) => console.error('auction closer failed', err));
+    closeExpiredAuctions().catch((err) => {
+      const code = typeof err === 'object' && err && 'code' in err ? String((err as { code?: string }).code) : '';
+      if (code === 'P1001') {
+        console.warn('[db] auction closer skipped — database unreachable (Neon may be waking)');
+        return;
+      }
+      console.error('auction closer failed', err);
+    });
   };
   tick();
   return setInterval(tick, 30_000);

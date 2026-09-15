@@ -9,29 +9,47 @@ const OTP_ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const OTP_LENGTH = 5;
 const OTP_TTL_MS = 10 * 60 * 1000;
 const BRAND = 'e-AMS';
+const RESEND_ONBOARDING = `${BRAND} <beth.t@example.com>`;
 
 function smtpPass() {
   return (process.env.SMTP_PASS || '').replace(/\s+/g, '');
 }
 
 function smtpPorts(): number[] {
-  const configured = Number(process.env.SMTP_PORT || (process.env.RENDER ? 465 : 587));
+  const configured = Number(process.env.SMTP_PORT || 465);
   const other = configured === 465 ? 587 : 465;
-  // Render often cannot complete STARTTLS on 587; prefer 465 first when hosted there.
-  if (process.env.RENDER && configured === 587) return [465, 587];
   return process.env.SMTP_NO_FALLBACK === 'true' ? [configured] : [configured, other];
+}
+
+function resendKey() {
+  return (process.env.RESEND_API_KEY || '').trim();
+}
+
+function mailFrom() {
+  return process.env.SMTP_FROM || (process.env.SMTP_USER ? `${BRAND} <${process.env.SMTP_USER}>` : RESEND_ONBOARDING);
+}
+
+function resendFrom() {
+  if (process.env.RESEND_FROM) return process.env.RESEND_FROM;
+  const from = mailFrom();
+  // Resend rejects unverified domains (Gmail / school mail). Use their onboarding sender unless overridden.
+  if (/resend\.dev/i.test(from)) return from;
+  return RESEND_ONBOARDING;
 }
 
 export function describeSmtp() {
   const user = process.env.SMTP_USER || '';
   const ports = smtpPorts();
+  const http = Boolean(resendKey());
   return {
+    via: http ? 'resend' : process.env.RENDER ? 'unconfigured (Render blocks SMTP — set RESEND_API_KEY)' : 'smtp',
     host: process.env.SMTP_HOST || 'smtp.gmail.com',
     port: ports[0],
     fallbackPort: ports[1] ?? null,
     userSet: Boolean(user),
     passSet: Boolean(smtpPass()),
-    from: process.env.SMTP_FROM || (user ? `${BRAND} <${user}>` : null),
+    resendSet: http,
+    from: http ? resendFrom() : mailFrom(),
   };
 }
 
@@ -65,7 +83,9 @@ function smtpError(err: unknown) {
   if (isConnFailure(err)) {
     return new ApiError(
       503,
-      'Could not reach the mail server. If this is hosted on Render, set SMTP_PORT=465 (SSL). Gmail also requires an App Password.',
+      process.env.RENDER
+        ? 'Render blocks Gmail SMTP. Add RESEND_API_KEY from https://resend.com (free) on the API service.'
+        : 'Could not reach the mail server. Check SMTP_HOST / SMTP_PORT and that Gmail is using an App Password.',
     );
   }
   return new ApiError(503, 'Could not send email right now. Please try again shortly.');
@@ -73,6 +93,51 @@ function smtpError(err: unknown) {
 
 function transporter(port = smtpPorts()[0]) {
   return nodemailer.createTransport(smtpOptions(port));
+}
+
+async function sendViaResend(to: string, subject: string, html: string) {
+  const key = resendKey();
+  const replyTo = process.env.SMTP_USER || undefined;
+  const res = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      from: resendFrom(),
+      to: [to],
+      subject,
+      html,
+      ...(replyTo ? { reply_to: replyTo } : {}),
+    }),
+  });
+  if (!res.ok) {
+    const body = await res.text().catch(() => '');
+    console.error('[email] resend failed', res.status, body);
+    throw new ApiError(503, 'Could not send email right now. Please try again shortly.');
+  }
+}
+
+async function sendViaSmtp(to: string, subject: string, html: string) {
+  const from = mailFrom();
+  const ports = smtpPorts();
+  const payload = { from, to, subject, html };
+  let lastErr: unknown;
+
+  for (let i = 0; i < ports.length; i++) {
+    try {
+      await transporter(ports[i]).sendMail(payload);
+      if (i > 0) console.warn(`[smtp] sent via fallback port ${ports[i]}`);
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (!isConnFailure(err) || i === ports.length - 1) throw smtpError(err);
+      console.warn(`[smtp] port ${ports[i]} failed (${(err as { code?: string }).code}); retrying ${ports[i + 1]}`);
+    }
+  }
+
+  throw smtpError(lastErr);
 }
 
 function hashOtp(email: string, purpose: EmailOtpPurpose, code: string) {
@@ -97,24 +162,17 @@ function brandedHtml(title: string, intro: string, code: string) {
 }
 
 export async function sendMail(to: string, subject: string, html: string) {
-  const from = process.env.SMTP_FROM || `${BRAND} <${process.env.SMTP_USER}>`;
-  const ports = smtpPorts();
-  const payload = { from, to, subject, html };
-  let lastErr: unknown;
-
-  for (let i = 0; i < ports.length; i++) {
-    try {
-      await transporter(ports[i]).sendMail(payload);
-      if (i > 0) console.warn(`[smtp] sent via fallback port ${ports[i]}`);
-      return;
-    } catch (err) {
-      lastErr = err;
-      if (!isConnFailure(err) || i === ports.length - 1) throw smtpError(err);
-      console.warn(`[smtp] port ${ports[i]} failed (${(err as { code?: string }).code}); retrying ${ports[i + 1]}`);
-    }
+  if (resendKey()) {
+    await sendViaResend(to, subject, html);
+    return;
   }
-
-  throw smtpError(lastErr);
+  if (process.env.RENDER) {
+    throw new ApiError(
+      503,
+      'Render blocks Gmail SMTP. Add RESEND_API_KEY from https://resend.com (free) on the API service, then redeploy.',
+    );
+  }
+  await sendViaSmtp(to, subject, html);
 }
 
 export async function issueEmailOtp(email: string, purpose: EmailOtpPurpose) {
